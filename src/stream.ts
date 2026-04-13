@@ -105,8 +105,8 @@ export function streamAnthropicOAuth(
 
       const client = new Anthropic({
         baseURL: model.baseUrl,
-        apiKey: isOAuth ? undefined : apiKey,
-        authToken: isOAuth ? apiKey : undefined,
+        apiKey: isOAuth ? null : apiKey,
+        authToken: isOAuth ? apiKey : null,
         defaultHeaders,
         dangerouslyAllowBrowser: true,
       });
