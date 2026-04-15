@@ -63,8 +63,16 @@ function makeDefaultHeaders(
   }
 
   if (options?.headers) {
-    for (const [key, value] of Object.entries(options.headers))
+    for (const [key, value] of Object.entries(options.headers)) {
+      const normalizedKey = key.toLowerCase();
+      if (
+        isOAuth &&
+        (normalizedKey === "x-api-key" || normalizedKey === "authorization")
+      ) {
+        continue;
+      }
       headers[key] = value;
+    }
   }
 
   return headers;
