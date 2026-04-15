@@ -98,8 +98,6 @@ export function convertPiMessagesToAnthropic(
       for (const block of message.content) {
         if (block.type === "text" && block.text.trim()) {
           blocks.push({ type: "text", text: sanitizeSurrogates(block.text) });
-        } else if (block.type === "thinking" && block.thinking.trim()) {
-          blocks.push({ type: "text", text: sanitizeSurrogates(block.thinking) });
         } else if (block.type === "toolCall") {
           blocks.push({
             type: "tool_use",
