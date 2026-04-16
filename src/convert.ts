@@ -40,13 +40,41 @@ const claudeCodeTools = [
 ] as const;
 const claudeCodeToolLookup = new Map(claudeCodeTools.map((name) => [name.toLowerCase(), name]));
 
-export function toClaudeCodeToolName(name: string): string {
-  return claudeCodeToolLookup.get(name.toLowerCase()) ?? name;
+/**
+ * Optional alias prefix for non-Claude-Code tools on the wire.
+ *
+ * When Anthropic's OAuth endpoint sees tools whose names aren't in its
+ * Claude-Code whitelist, it silently drops them. Setting this env var to
+ * something like `mcp__samspace__` causes every non-CC tool to be shipped
+ * under `<prefix><lowercased-name>`, which Anthropic treats as an MCP tool
+ * and passes through untouched. The inverse mapping on tool_use events
+ * (via `fromClaudeCodeToolName`) restores the original Pi tool name so
+ * the rest of the agent stack never sees the prefix.
+ *
+ * Unset (the default) preserves historical behavior: non-CC tool names
+ * pass through verbatim, at the mercy of the OAuth filter.
+ */
+function getMcpAliasPrefix(): string | undefined {
+  const raw = process.env.PI_ANTHROPIC_MCP_ALIAS_PREFIX?.trim();
+  return raw && raw.length > 0 ? raw : undefined;
+}
+
+export function toClaudeCodeToolName(name: string, mcpPrefix?: string): string {
+  const builtIn = claudeCodeToolLookup.get(name.toLowerCase());
+  if (builtIn) return builtIn;
+  const prefix = mcpPrefix ?? getMcpAliasPrefix();
+  if (!prefix || name.toLowerCase().startsWith(prefix.toLowerCase())) return name;
+  return `${prefix}${name.toLowerCase()}`;
 }
 
 export function fromClaudeCodeToolName(name: string, tools?: Tool[]): string {
-  const lower = name.toLowerCase();
-  return tools?.find((tool) => tool.name.toLowerCase() === lower)?.name ?? name;
+  const prefix = getMcpAliasPrefix();
+  const stripped =
+    prefix && name.toLowerCase().startsWith(prefix.toLowerCase())
+      ? name.slice(prefix.length)
+      : name;
+  const lower = stripped.toLowerCase();
+  return tools?.find((tool) => tool.name.toLowerCase() === lower)?.name ?? stripped;
 }
 
 export function convertPiMessagesToAnthropic(
@@ -56,6 +84,7 @@ export function convertPiMessagesToAnthropic(
   const params: MessageParam[] = [];
   const toolIdMap = new Map<string, string>();
   const usedToolIds = new Set<string>();
+  const mcpPrefix = isOAuth ? getMcpAliasPrefix() : undefined;
 
   const getAnthropicToolId = (id: string): string => {
     const existing = toolIdMap.get(id);
@@ -102,7 +131,7 @@ export function convertPiMessagesToAnthropic(
           blocks.push({
             type: "tool_use",
             id: getAnthropicToolId(block.id),
-            name: isOAuth ? toClaudeCodeToolName(block.name) : block.name,
+            name: isOAuth ? toClaudeCodeToolName(block.name, mcpPrefix) : block.name,
             input: block.arguments,
           });
         }
@@ -147,8 +176,9 @@ export function convertPiMessagesToAnthropic(
 }
 
 export function convertPiToolsToAnthropic(tools: Tool[], isOAuth: boolean): ToolUnion[] {
+  const mcpPrefix = isOAuth ? getMcpAliasPrefix() : undefined;
   return tools.map((tool) => ({
-    name: isOAuth ? toClaudeCodeToolName(tool.name) : tool.name,
+    name: isOAuth ? toClaudeCodeToolName(tool.name, mcpPrefix) : tool.name,
     description: tool.description,
     input_schema: {
       type: "object" as const,
